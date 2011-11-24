@@ -45,7 +45,7 @@
 #include <net/netfilter/nf_conntrack_timestamp.h>
 #ifdef CONFIG_NF_NAT_NEEDED
 #include <net/netfilter/nf_nat_core.h>
-#include <net/netfilter/nf_nat_protocol.h>
+#include <net/netfilter/nf_nat_l4proto.h>
 #endif
 
 #include <linux/netfilter/nfnetlink.h>
@@ -1027,6 +1027,7 @@ ctnetlink_parse_nat_setup(struct nf_conn *ct,
 			  const struct nlattr *attr)
 {
 	typeof(nfnetlink_parse_nat_setup_hook) parse_nat_setup;
+	int err;
 
 	parse_nat_setup = rcu_dereference(nfnetlink_parse_nat_setup_hook);
 	if (!parse_nat_setup) {
@@ -1034,7 +1035,7 @@ ctnetlink_parse_nat_setup(struct nf_conn *ct,
 		rcu_read_unlock();
 		spin_unlock_bh(&nf_conntrack_lock);
 		nfnl_unlock();
-		if (request_module("nf-nat-ipv4") < 0) {
+		if (request_module("nf-nat") < 0) {
 			nfnl_lock();
 			spin_lock_bh(&nf_conntrack_lock);
 			rcu_read_lock();
@@ -1049,7 +1050,26 @@ ctnetlink_parse_nat_setup(struct nf_conn *ct,
 		return -EOPNOTSUPP;
 	}
 
-	return parse_nat_setup(ct, manip, attr);
+	err = parse_nat_setup(ct, manip, attr);
+	if (err == -EAGAIN) {
+#ifdef CONFIG_MODULES
+		rcu_read_unlock();
+		spin_unlock_bh(&nf_conntrack_lock);
+		nfnl_unlock();
+		if (request_module("nf-nat-%u", nf_ct_l3num(ct)) < 0) {
+			nfnl_lock();
+			spin_lock_bh(&nf_conntrack_lock);
+			rcu_read_lock();
+			return -EOPNOTSUPP;
+		}
+		nfnl_lock();
+		spin_lock_bh(&nf_conntrack_lock);
+		rcu_read_lock();
+#else
+		err = -EOPNOTSUPP;
+#endif
+	}
+	return err;
 }
 #endif
 
