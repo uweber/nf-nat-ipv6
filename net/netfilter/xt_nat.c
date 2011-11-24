@@ -180,4 +180,6 @@ module_exit(xt_nat_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_SNAT");
+MODULE_ALIAS("ip6t_SNAT");
 MODULE_ALIAS("ipt_DNAT");
+MODULE_ALIAS("ip6t_DNAT");

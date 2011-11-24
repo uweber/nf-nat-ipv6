@@ -28,6 +28,7 @@
 #include <net/netfilter/nf_conntrack_core.h>
 #include <net/netfilter/nf_conntrack_zones.h>
 #include <net/netfilter/ipv6/nf_conntrack_ipv6.h>
+#include <net/netfilter/nf_nat_helper.h>
 #include <net/netfilter/ipv6/nf_defrag_ipv6.h>
 #include <net/netfilter/nf_log.h>
 
@@ -183,6 +184,19 @@ static unsigned int ipv6_confirm(unsigned int hooknum,
 		nf_log_packet(NFPROTO_IPV6, hooknum, skb, in, out, NULL,
 			      "nf_ct_%s: dropping packet", helper->name);
 		return ret;
+	}
+
+	/* adjust seqs for loopback traffic only in outgoing direction */
+	if (test_bit(IPS_SEQ_ADJUST_BIT, &ct->status) &&
+	    !nf_is_loopback_packet(skb)) {
+		typeof(nf_nat_seq_adjust_hook) seq_adjust;
+
+		seq_adjust = rcu_dereference(nf_nat_seq_adjust_hook);
+		if (!seq_adjust ||
+		    !seq_adjust(skb, ct, ctinfo, protoff)) {
+			NF_CT_STAT_INC_ATOMIC(nf_ct_net(ct), drop);
+			return NF_DROP;
+		}
 	}
 out:
 	/* We've seen it coming out the other side: confirm it */
